@@ -1,0 +1,32 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto21
+    commands:
+      - echo "Installing Gradle wrapper..."
+      - chmod +x ./gradlew
+
+  pre_build:
+    commands:
+      - echo "Starting build process..."
+      - ./gradlew clean
+
+  build:
+    commands:
+      - echo "Building the project..."
+      - ./gradlew build
+
+  post_build:
+    commands:
+      - echo "Build complete. Preparing for deployment..."
+      - mkdir -p build/deploy
+      - cp build/libs/*.jar build/deploy/
+      - echo "Done copying artifacts."
+
+artifacts:
+  files:
+    - build/deploy/**/*
+    - appspec.yml
+    - scripts/**/*
