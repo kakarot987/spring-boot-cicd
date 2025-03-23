@@ -1,0 +1,41 @@
+steps:
+  # Step 1: Build the project
+  - name: 'gcr.io/cloud-builders/gradle'
+    args: ['clean', 'build']
+    dir: '.'
+
+  # Step 2: Copy JAR to the GCE instance
+  - name: 'gcr.io/cloud-builders/scp'
+    args:
+      - '-i'
+      - '/workspace/ssh_key'
+      - '-o'
+      - 'StrictHostKeyChecking=no'
+      - 'build/libs/*.jar'
+      - '${_GCE_USER}@${_GCE_INSTANCE_IP}:${_REMOTE_DIR}'
+
+  # Step 3: SSH into the VM and restart the app
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud compute ssh ${_GCE_USER}@${_GCE_INSTANCE_NAME} --zone=${_GCE_ZONE} --command="\
+          pkill -f 'java -jar' || true && \
+          nohup java -jar ${_REMOTE_DIR}/*.jar > ${_REMOTE_DIR}/app.log 2>&1 &"
+    secretEnv: ['SSH_KEY']
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/${PROJECT_ID}/secrets/ssh-key/versions/latest
+      env: 'SSH_KEY'
+
+# Set your substitutions here
+substitutions:
+  _GCE_USER: 'gcpuser'
+  _GCE_INSTANCE_NAME: 'springboot-vm'
+  _GCE_INSTANCE_IP: 'X.X.X.X'
+  _GCE_ZONE: 'us-central1-a'
+  _REMOTE_DIR: '/home/gcpuser/app'
+
+timeout: 600s
