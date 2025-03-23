@@ -1,0 +1,16 @@
+stages:
+  - build
+
+variables:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+
+build:
+  stage: build
+  image: eclipse-temurin:21-jdk
+  script:
+    - chmod +x ./gradlew
+    - ./gradlew build
+  only:
+    - main
+    - merge_requests
+    - branches
