@@ -1,0 +1,32 @@
+image: openjdk:21
+
+pipelines:
+  default:
+    - step:
+        name: Build & Test (CI)
+        caches:
+          - gradle
+        script:
+          - chmod +x ./gradlew
+          - ./gradlew clean build
+        artifacts:
+          - build/libs/*.jar
+
+    - step:
+        name: Deploy to Remote Server (CD)
+        deployment: production
+        script:
+          - pipe: atlassian/ssh-run:0.5.0
+            variables:
+              SSH_USER: $SSH_USER
+              SERVER: $SSH_HOST
+              COMMAND: |
+                pkill -f 'java -jar' || true
+                nohup java -jar $DEPLOY_DIR/$(ls $DEPLOY_DIR/*.jar | sort | tail -n1) > $DEPLOY_DIR/app.log 2>&1 &
+
+          - pipe: atlassian/scp-deploy:0.3.8
+            variables:
+              USER: $SSH_USER
+              SERVER: $SSH_HOST
+              REMOTE_PATH: $DEPLOY_DIR
+              LOCAL_PATH: build/libs/*.jar
