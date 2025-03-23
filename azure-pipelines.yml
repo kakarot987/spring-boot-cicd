@@ -1,0 +1,55 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildDir: 'build/libs'
+  jarName: '**/*.jar'
+
+stages:
+  - stage: Build
+    jobs:
+      - job: BuildAndTest
+        steps:
+          - task: Gradle@3
+            inputs:
+              gradleWrapperFile: 'gradlew'
+              tasks: 'clean build'
+              publishJUnitResults: true
+              testResultsFiles: '**/TEST-*.xml'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.21'
+              gradleOptions: '-Xmx1024m'
+
+          - publish: $(buildDir)
+            artifact: springboot-app
+
+  - stage: Deploy
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - job: DeployToAzureVM
+        steps:
+          - download: current
+            artifact: springboot-app
+
+          - task: CopyFilesOverSSH@0
+            inputs:
+              sshEndpoint: 'AzureVMConnection'
+              sourceFolder: '$(Pipeline.Workspace)/springboot-app'
+              contents: '**/*.jar'
+              targetFolder: '/home/azureuser/app'
+
+          - task: SSH@0
+            inputs:
+              sshEndpoint: 'AzureVMConnection'
+              runOptions: 'inline'
+              inline: |
+                echo "Killing existing app..."
+                pkill -f 'java -jar' || true
+                echo "Starting app..."
+                nohup java -jar /home/azureuser/app/*.jar > /home/azureuser/app/app.log 2>&1 &
