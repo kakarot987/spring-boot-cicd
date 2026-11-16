@@ -1,29 +1,12 @@
-# Spring Boot CI/CD on Google Cloud with Cloud Build
+# GCP Cloud Build + Compute Engine template
 
-This project demonstrates CI/CD using **Google Cloud Build** to deploy a Spring Boot + Gradle application to a GCE virtual machine over SSH.
+Cloud Build uses an explicit Java 21 Gradle build, then `gcloud compute ssh`
+and `gcloud compute scp` to transfer a non-plain executable JAR.
+The previous pipeline referenced a nonexistent SSH key and disabled host-key
+checking; both have been removed. Configure the Cloud Build service account
+and target VM's authorized SSH access before use.
 
----
-
-## ✅ CI/CD Flow
-
-1. **CI**: Cloud Build runs `./gradlew clean build`
-2. **CD**:
-    - Copies JAR file to a GCE VM via `scp`
-    - SSHs into the VM
-    - Kills any running Spring Boot app
-    - Starts the new version in the background
-
----
-
-## 📄 Files
-
-. ├── cloudbuild.yaml # Cloud Build config ├── build/libs/ # JAR built by Gradle └── src/ # App source
-
----
-
-## 🔐 SSH Key Setup
-
-1. Generate SSH key (if not yet done):
-
-   ```bash
-   ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa
+**The pipeline intentionally uploads only:** remote service restarts are not
+automatic until a dedicated service manager, rollout rollback, and HTTP health
+checks are configured. Set `_GCE_USER`, `_GCE_INSTANCE_NAME`,
+`_GCE_ZONE`, and `_REMOTE_DIR` for your VM. This is not a verified deployment.
