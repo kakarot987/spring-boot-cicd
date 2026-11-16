@@ -1,10 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 APP_DIR="/home/ec2-user/app"
-JAR_NAME=$(ls $APP_DIR/*.jar | tail -n1)
+# CodeDeploy preserves the build/libs path from buildspec.yml.
+JAR="$(find "$APP_DIR/build/libs" -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' -print -quit)"
+if [[ -z "$JAR" ]]; then
+  echo "No executable application JAR found under $APP_DIR/build/libs" >&2
+  exit 1
+fi
 
-echo "Stopping running app (if any)..."
-pkill -f 'java -jar' || true
-
-echo "Starting $JAR_NAME..."
-nohup java -jar $JAR_NAME > $APP_DIR/app.log 2>&1 &
+# Do not kill arbitrary java processes on this host. Prefer a dedicated service.
+if ! command -v systemctl >/dev/null || ! systemctl cat spring-boot-app.service >/dev/null 2>&1; then
+  echo "spring-boot-app.service is not configured; refusing unverified restart" >&2
+  exit 1
+fi
+sudo systemctl restart spring-boot-app.service
+sudo systemctl is-active --quiet spring-boot-app.service
+echo "Deployed JAR: $JAR"
