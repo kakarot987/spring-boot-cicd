@@ -1,32 +1,41 @@
-image: openjdk:21
+image: eclipse-temurin:21-jdk
 
 pipelines:
   default:
     - step:
-        name: Build & Test (CI)
+        name: Build and Test
         caches:
           - gradle
         script:
           - chmod +x ./gradlew
-          - ./gradlew clean build
+          - ./gradlew --no-daemon clean build
         artifacts:
           - build/libs/*.jar
 
+    # Production deployment must be started manually in Bitbucket.
     - step:
-        name: Deploy to Remote Server (CD)
+        name: Deploy to Remote Server (manual)
+        trigger: manual
         deployment: production
         script:
-          - pipe: atlassian/ssh-run:0.5.0
-            variables:
-              SSH_USER: $SSH_USER
-              SERVER: $SSH_HOST
-              COMMAND: |
-                pkill -f 'java -jar' || true
-                nohup java -jar $DEPLOY_DIR/$(ls $DEPLOY_DIR/*.jar | sort | tail -n1) > $DEPLOY_DIR/app.log 2>&1 &
-
+          # Upload the new artifact before attempting a remote restart.
           - pipe: atlassian/scp-deploy:0.3.8
             variables:
               USER: $SSH_USER
               SERVER: $SSH_HOST
               REMOTE_PATH: $DEPLOY_DIR
               LOCAL_PATH: build/libs/*.jar
+
+          - pipe: atlassian/ssh-run:0.5.0
+            variables:
+              SSH_USER: $SSH_USER
+              SERVER: $SSH_HOST
+              MODE: command
+              COMMAND: |
+                set -eu
+                test -d "$DEPLOY_DIR"
+                JAR="$(find "$DEPLOY_DIR" -type f -name '*.jar' | sort | tail -n 1)"
+                test -n "$JAR"
+                echo "Artifact uploaded: $JAR"
+                echo "Deploy this artifact with the target VM's application service manager."
+                echo "A generic pkill/nohup restart is intentionally disabled until health checks are configured."
