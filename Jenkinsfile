@@ -1,50 +1,54 @@
 pipeline {
     agent any
 
+    tools {
+        jdk 'jdk-21'
+    }
+
+    options {
+        timestamps()
+    }
+
+    parameters {
+        booleanParam(name: 'DEPLOY_ENABLED', defaultValue: false,
+                     description: 'Explicitly opt in to remote deployment')
+    }
+
     environment {
-        DEPLOY_USER = 'user'                     // replace with your SSH username
-        DEPLOY_HOST = 'your-server.com'          // replace with your server IP or domain
-        DEPLOY_DIR  = '/home/user/app'           // remote directory to deploy the jar
-        SSH_KEY_ID  = 'my-ssh-key'               // Jenkins credentials ID for SSH key
+        DEPLOY_USER = 'user'
+        DEPLOY_HOST = 'your-server.com'
+        DEPLOY_DIR = '/home/user/app'
+        SSH_KEY_ID = 'my-ssh-key'
     }
 
     stages {
         stage('Checkout') {
+            steps { checkout scm }
+        }
+        stage('Build and Test') {
             steps {
-                checkout scm
+                sh 'chmod +x ./gradlew && ./gradlew --no-daemon clean build'
             }
         }
-
-        stage('Set up JDK 21') {
-            tools {
-                jdk 'jdk-21'                     // make sure JDK 21 is configured in Jenkins
-            }
-        }
-
-        stage('Build with Gradle') {
-            steps {
-                sh './gradlew clean build'
-            }
-        }
-
         stage('Archive JAR') {
             steps {
                 archiveArtifacts artifacts: 'build/libs/*.jar', fingerprint: true
             }
         }
-
         stage('Deploy to Remote Server') {
+            when { expression { return params.DEPLOY_ENABLED } }
             steps {
                 sshagent([env.SSH_KEY_ID]) {
                     sh '''
-                    echo "Copying JAR to remote server..."
-                    scp build/libs/*.jar $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/
-
-                    echo "Restarting app on remote server..."
-                    ssh $DEPLOY_USER@$DEPLOY_HOST <<EOF
-                    pkill -f 'java -jar' || true
-                    nohup java -jar $DEPLOY_DIR/*.jar > $DEPLOY_DIR/app.log 2>&1 &
-                    EOF
+                        set -eu
+                        test "$DEPLOY_HOST" != "your-server.com" || {
+                          echo "Configure a real DEPLOY_HOST before deploying" >&2
+                          exit 1
+                        }
+                        ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_DIR'"
+                        scp -o StrictHostKeyChecking=yes build/libs/*.jar "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
+                        ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+                          "test -n \"\$(find '$DEPLOY_DIR' -maxdepth 1 -name '*.jar' -print -quit)\""
                     '''
                 }
             }
